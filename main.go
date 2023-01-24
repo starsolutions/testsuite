@@ -60,11 +60,7 @@ func NewCommandLineFlags() *CommandLineFlags {
 }
 
 func (c *CommandLineFlags) validate() error {
-	if len(*c.CertFile) == 0 {
-		return fmt.Errorf("cert file invalid: %s", *c.CertFile)
-	} else if len(*c.KeyFile) == 0 {
-		return fmt.Errorf("key file invalid: %s", *c.KeyFile)
-	} else if len(*c.NotifyName) == 0 {
+	if len(*c.NotifyName) == 0 {
 		return fmt.Errorf("notify_name must be provided")
 	} else if len(*c.NotifyLink) == 0 {
 		return fmt.Errorf("notify_link must be provided")
@@ -114,9 +110,7 @@ func main() {
 		},
 	}
 	httpsServer := &http.Server{
-		Addr:         ":https",
-		TLSConfig:    tlsConfig,
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
+		Addr:         ":http",
 	}
 
 	homeTmpl, err := c.homeTemplate()
@@ -137,22 +131,10 @@ func main() {
 	}
 	_ = server.NewWebServer(homeTmpl, aboutTmpl, newTestTmpl, testStatusTmpl, httpsServer, *c.Hostname, *c.TestTimeout, *c.MaxTests, *c.NotifyName, *c.NotifyLink, *c.StaticDir, *c.LogFile)
 
-	redir := &http.Server{
-		Addr:         ":http",
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Connection", "close")
-			http.Redirect(w, req, fmt.Sprintf("https://%s%s", req.Host, req.URL), http.StatusMovedPermanently)
-		}),
-	}
 	go func() {
 		sigint := make(chan os.Signal, 1)
 		signal.Notify(sigint, os.Interrupt)
 		<-sigint
-		if err := redir.Shutdown(context.Background()); err != nil {
-			log.Printf("HTTP redirect server Shutdown: %v", err)
-		}
 		if err := httpsServer.Shutdown(context.Background()); err != nil {
 			log.Printf("HTTP server Shutdown: %v", err)
 		}
@@ -162,7 +144,7 @@ func main() {
 			log.Printf("HTTP redirect server ListenAndServe: %v", err)
 		}
 	}()
-	if err := httpsServer.ListenAndServeTLS(*c.CertFile, *c.KeyFile); err != nil {
+	if err := httpsServer.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
